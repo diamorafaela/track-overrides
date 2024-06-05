@@ -58,4 +58,5 @@ jobs:
         uses: diamorafaela/track-overrides@main
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+          post-comment: false
 ```
