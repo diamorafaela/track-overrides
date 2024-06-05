@@ -20,17 +20,43 @@ runs:
 
     - name: Run override comparison
       shell: bash
-      id: check_overrides
+      id: track_overrides
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
           set -e 
           changed_methods=$(python ${{ github.action_path }}/src/track_overrides.py ${{ github.workspace }})
+          echo "::set-output name=changed_methods::${changed_methods}"
           if [[ -n "$changed_methods" ]]; then
-            echo "Override comparison result: $changed_methods"
-            exit 1
+            echo "::set-output name=has_changes::true"
           else
-            echo "No outdated overrides detected."
+            echo "::set-output name=has_changes::false"
           fi
     
+    - name: Post comment on PR if overrides changed
+      if: steps.track_overrides.outputs.has_changes == 'true'
+      uses: actions/github-script@v6
+      env:
+        DATA: ${{ steps.track_overrides.outputs.changed_methods }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const changedMethods = process.env.DATA;
+          const commentBody = "The following override methods have changed in the upstream repository:\n\n" + changedMethods;
+          github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body: commentBody
+          });
+
+    - name: Fail if overrides changed
+      shell: bash
+      if: steps.track_overrides.outputs.has_changes == 'true'
+      run: |
+        echo "Override methods have changed in the upstream repository."
+        exit 1
+
     - name: Cleanup
       if: always()
       shell: bash
