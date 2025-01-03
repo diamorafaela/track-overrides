@@ -58,7 +58,7 @@ runs:
           
           if (fs.existsSync(diffFilePath)) {
             const diffContent = fs.readFileSync(diffFilePath, 'utf8');
-            const commentBody = `The following override methods have changed in the upstream repository:\n\n\`\`\`diff\n${diffContent}\n\`\`\``;
+            const commentBody = `The following override methods have changed in the upstream repository:\n\n${diffContent}\n`;
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,

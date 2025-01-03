@@ -68,9 +68,8 @@ def compare_commit_hashes(directory):
                     if latest_commit_hash and latest_commit_hash != commit_hash:
                         diff = get_method_diff(repo, commit_hash, latest_commit_hash, file_path, method_name)
                         if diff:
-                            clean_diff = "\n".join(line for line in diff.splitlines() if not line.startswith("diff --git"))
                             changed_methods.append(
-                                f"### `{method_name}` in file `{file_path}` has changed:\n\n```diff\n{clean_diff}\n```"
+                                f"### `{method_name}` in file `{file_path}` has changed:\n\n```diff\n{diff}\n```"
                             )
                         else:
                             changed_methods.append(
