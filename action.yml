@@ -31,12 +31,11 @@ runs:
           set -e 
           changed_methods=$(python ${{ github.action_path }}/src/track_overrides.py ${{ github.workspace }})
 
-          # Use <<EOF to safely handle multi-line strings
-          echo "CHANGED_METHODS<<EOF" >> $GITHUB_ENV
-          echo "$changed_methods" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-          
-          echo "changed_methods=$changed_methods" >> $GITHUB_ENV
+          # Sanitize the diff content before storing it
+          sanitized_methods=$(echo "$changed_methods" | sed 's/\r//g' | sed 's/\n/\\n/g' | sed 's/\"/\\\"/g')
+
+          # Store the sanitized output in an environment variable
+          echo "sanitized_methods=$sanitized_methods" >> $GITHUB_ENV
 
           if [[ -n "$changed_methods" ]]; then
             echo "Override methods have changed in the upstream repository."
@@ -54,14 +53,18 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         script: |
-          const changedMethods = process.env.changed_methods.trim();
-           const commentBody = `The following override methods have changed in the upstream repository:\n\n\`\`\`\n${changedMethods}\n\`\`\``;
-          github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.issue.number,
-            body: commentBody
-          });
+          const changedMethods = process.env.sanitized_methods.trim();
+          if (changedMethods) {
+            const commentBody = `The following override methods have changed in the upstream repository:\n\n\`\`\`diff\n${changedMethods}\n\`\`\``;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+          } else {
+            console.log("No changes to report.");
+          }
 
     - name: Debug Changed Methods
       shell: bash
