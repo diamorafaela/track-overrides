@@ -34,11 +34,8 @@ runs:
           # Sanitize the diff content before storing it (escape special characters)
           sanitized_methods=$(echo "$changed_methods" | sed 's/\r//g' | sed 's/\n/\\n/g' | sed 's/\"/\\\"/g')
 
-          # Encode the sanitized diff using base64 for safe transmission
-          encoded_methods=$(echo "$sanitized_methods" | base64)
-
-          # Store the base64-encoded output in an environment variable
-          echo "encoded_methods=$encoded_methods" >> $GITHUB_ENV
+          # Store the sanitized diff in a file
+          echo "$sanitized_methods" > diff_output.txt
 
           if [[ -n "$changed_methods" ]]; then
             echo "Override methods have changed in the upstream repository."
@@ -56,9 +53,12 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         script: |
-          const changedMethods = process.env.sanitized_methods.trim();
-          if (changedMethods) {
-            const commentBody = `The following override methods have changed in the upstream repository:\n\n\`\`\`diff\n${changedMethods}\n\`\`\``;
+          const fs = require('fs');
+          const diffFilePath = './diff_output.txt';
+          
+          if (fs.existsSync(diffFilePath)) {
+            const diffContent = fs.readFileSync(diffFilePath, 'utf8');
+            const commentBody = `The following override methods have changed in the upstream repository:\n\n\`\`\`diff\n${diffContent}\n\`\`\``;
             github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
