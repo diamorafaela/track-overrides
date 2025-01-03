@@ -31,11 +31,14 @@ runs:
           set -e 
           changed_methods=$(python ${{ github.action_path }}/src/track_overrides.py ${{ github.workspace }})
 
-          # Sanitize the diff content before storing it
+          # Sanitize the diff content before storing it (escape special characters)
           sanitized_methods=$(echo "$changed_methods" | sed 's/\r//g' | sed 's/\n/\\n/g' | sed 's/\"/\\\"/g')
 
-          # Store the sanitized output in an environment variable
-          echo "sanitized_methods=$sanitized_methods" >> $GITHUB_ENV
+          # Encode the sanitized diff using base64 for safe transmission
+          encoded_methods=$(echo "$sanitized_methods" | base64)
+
+          # Store the base64-encoded output in an environment variable
+          echo "encoded_methods=$encoded_methods" >> $GITHUB_ENV
 
           if [[ -n "$changed_methods" ]]; then
             echo "Override methods have changed in the upstream repository."
