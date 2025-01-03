@@ -30,7 +30,12 @@ runs:
       run: |
           set -e 
           changed_methods=$(python ${{ github.action_path }}/src/track_overrides.py ${{ github.workspace }})
-          echo "CHANGED_METHODS=${changed_methods}" >> $GITHUB_ENV
+
+          # Use <<EOF to safely handle multi-line strings
+          echo "CHANGED_METHODS<<EOF" >> $GITHUB_ENV
+          echo "$changed_methods" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+          
           if [[ -n "$changed_methods" ]]; then
             echo "Override methods have changed in the upstream repository."
             echo "Changed methods: $changed_methods"
