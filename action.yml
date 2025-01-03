@@ -30,7 +30,13 @@ runs:
       run: |
           set -e 
           changed_methods=$(python ${{ github.action_path }}/src/track_overrides.py ${{ github.workspace }})
-          echo "::set-output name=changed_methods::${changed_methods}"
+
+          # Sanitize the diff content before storing it (escape special characters)
+          sanitized_methods=$(echo "$changed_methods" | sed 's/\r//g' | sed 's/\n/\\n/g' | sed 's/\"/\\\"/g')
+
+          # Store the sanitized diff in a file
+          echo "$sanitized_methods" > diff_output.txt
+
           if [[ -n "$changed_methods" ]]; then
             echo "Override methods have changed in the upstream repository."
             echo "Changed methods: $changed_methods"
@@ -46,16 +52,26 @@ runs:
         DATA: ${{ steps.track_overrides.outputs.changed_methods }}
       with:
         github-token: ${{ inputs.github-token }}
-        post-comment: ${{ inputs.post-comment }}
         script: |
-          const changedMethods = process.env.DATA;
-          const commentBody = "The following override methods have changed in the upstream repository:\n\n" + changedMethods;
-          github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.issue.number,
-            body: commentBody
-          });
+          const fs = require('fs');
+          const diffFilePath = './diff_output.txt';
+          
+          if (fs.existsSync(diffFilePath)) {
+            const diffContent = fs.readFileSync(diffFilePath, 'utf8');
+            const commentBody = `The following override methods have changed in the upstream repository:\n\n${diffContent}\n`;
+            github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: commentBody
+            });
+          } else {
+            console.log("No changes to report.");
+          }
+
+    - name: Debug Changed Methods
+      shell: bash
+      run: echo "${{ steps.track_overrides.outputs.changed_methods }}"
 
     - name: Fail if overrides changed
       shell: bash
