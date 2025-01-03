@@ -22,7 +22,7 @@ def get_last_commit_hash_for_file_in_branch(repo_url, file_path):
     return None
 
 
-def get_file_diff(repo_url, base_commit, head_commit, file_path):
+def get_method_diff(repo_url, base_commit, head_commit, file_path, method_name):
     repo_url_split = repo_url.strip('/').split('/')
     username, repo_name = repo_url_split[-2], repo_url_split[-1]
     api_url = f"https://api.github.com/repos/{username}/{repo_name}/compare/{base_commit}...{head_commit}"
@@ -36,7 +36,13 @@ def get_file_diff(repo_url, base_commit, head_commit, file_path):
     diff_data = response.json()
     for file in diff_data.get("files", []):
         if file["filename"] == file_path:
-            return file.get("patch", "")
+            full_patch = file.get("patch", "")
+            if full_patch:
+                # Using regex to extract the method diff
+                method_diff_pattern = r"(def\s+" + re.escape(method_name) + r".*?)(?=def\s+|\Z)"
+                method_diff = re.search(method_diff_pattern, full_patch, re.DOTALL)
+                if method_diff:
+                    return method_diff.group(0)
     return None
 
 
@@ -60,7 +66,7 @@ def compare_commit_hashes(directory):
                     latest_commit_hash = get_last_commit_hash_for_file_in_branch(repo, file_path)
                     
                     if latest_commit_hash and latest_commit_hash != commit_hash:
-                        diff = get_file_diff(repo, commit_hash, latest_commit_hash, file_path)
+                        diff = get_method_diff(repo, commit_hash, latest_commit_hash, file_path, method_name)
                         if diff:
                             changed_methods.append(
                                 f"### `{method_name}` in file `{file_path}` has changed:\n\n```diff\n{diff}\n```"
