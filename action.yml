@@ -36,6 +36,8 @@ runs:
           echo "$changed_methods" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
           
+          echo "changed_methods=$changed_methods" >> $GITHUB_ENV
+
           if [[ -n "$changed_methods" ]]; then
             echo "Override methods have changed in the upstream repository."
             echo "Changed methods: $changed_methods"
@@ -52,8 +54,8 @@ runs:
       with:
         github-token: ${{ inputs.github-token }}
         script: |
-          const changedMethods = process.env.DATA.split("\n").map(line => line.trim()).join("\n");
-          const commentBody = "The following override methods have changed in the upstream repository:\n\n" + changedMethods;
+          const changedMethods = process.env.changed_methods.trim();
+           const commentBody = `The following override methods have changed in the upstream repository:\n\n\`\`\`\n${changedMethods}\n\`\`\``;
           github.rest.issues.createComment({
             owner: context.repo.owner,
             repo: context.repo.repo,
