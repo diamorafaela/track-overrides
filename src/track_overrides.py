@@ -2,48 +2,39 @@ import requests
 import os
 import re
 import sys
+import difflib
 
 
-def get_last_commit_hash_for_file_in_branch(repo_url, file_path):
-    repo_url_split = repo_url.strip('/').split('/')
+def download_file_from_commit(repo_url, commit_hash, file_path):
+    repo_url_split = repo_url.strip("/").split("/")
     username, repo_name = repo_url_split[-2], repo_url_split[-1]
-    api_url = f"https://api.github.com/repos/{username}/{repo_name}/commits"
-    branch = os.getenv("GITHUB_BASE_REF")
-    params = {'path': file_path, 'sha': branch}
-    response = requests.get(api_url, params=params)
-    
-    if response.status_code != 200:
-        print(f"Failed to fetch commits: {response.status_code} - {response.reason}")
+
+    raw_url = f"https://raw.githubusercontent.com/{username}/{repo_name}/{commit_hash}/{file_path}"
+    response = requests.get(raw_url)
+
+    if response.status_code == 200:
+        return response.text
+    else:
+        print(f"Failed to fetch file {file_path} from commit {commit_hash}: {response.status_code} - {response.reason}")
         return None
 
-    commits = response.json()
-    if commits:
-        return commits[0]['sha']
-    return None
+
+def extract_method(source_code, method_name):
+    method_pattern = re.compile(
+        rf"def\s+{re.escape(method_name)}\s*\(.*?\):.*?(?=^\s*def\s+|\Z)", re.DOTALL | re.MULTILINE
+    )
+    match = method_pattern.search(source_code)
+    return match.group(0) if match else None
 
 
-def get_method_diff(repo_url, base_commit, head_commit, file_path, method_name):
-    repo_url_split = repo_url.strip('/').split('/')
-    username, repo_name = repo_url_split[-2], repo_url_split[-1]
-    api_url = f"https://api.github.com/repos/{username}/{repo_name}/compare/{base_commit}...{head_commit}"
-    response = requests.get(api_url)
-
-    if response.status_code != 200:
-        print(f"Failed to fetch diff: {response.status_code} - {response.reason}")
-        print(f"API URL: {api_url}")
+def compare_method_diff(old_method, new_method):
+    if not old_method or not new_method:
         return None
 
-    diff_data = response.json()
-    for file in diff_data.get("files", []):
-        if file["filename"] == file_path:
-            full_patch = file.get("patch", "")
-            if full_patch:
-                # Using regex to extract the method diff
-                method_diff_pattern = r"(def\s+" + re.escape(method_name) + r".*?)(?=def\s+|\Z)"
-                method_diff = re.search(method_diff_pattern, full_patch, re.DOTALL)
-                if method_diff:
-                    return method_diff.group(0)
-    return None
+    diff = difflib.unified_diff(
+        old_method.splitlines(), new_method.splitlines(), lineterm="", fromfile="old", tofile="new"
+    )
+    return "\n".join(diff)
 
 
 def compare_commit_hashes(directory):
@@ -52,30 +43,59 @@ def compare_commit_hashes(directory):
 
     for root, _, files in os.walk(directory):
         for file_name in files:
-            if not file_name.endswith('.py'):
+            if not file_name.endswith(".py"):
                 continue
-            
+
             file_path = os.path.join(root, file_name)
-            with open(file_path, 'r') as file:
+            with open(file_path, "r") as file:
                 source_code = file.read()
+
                 for match in re.finditer(pattern, source_code, re.DOTALL):
                     commit_hash = match.group(1)
                     repo = match.group(2)
                     file_path = match.group(3)
                     method_name = match.group(4)
+
                     latest_commit_hash = get_last_commit_hash_for_file_in_branch(repo, file_path)
-                    
-                    if latest_commit_hash and latest_commit_hash != commit_hash:
-                        diff = get_method_diff(repo, commit_hash, latest_commit_hash, file_path, method_name)
-                        if diff:
-                            changed_methods.append(
-                                f"### `{method_name}` in file `{file_path}` has changed:\n\n```diff\n{diff}\n```"
-                            )
-                        else:
-                            changed_methods.append(
-                                f"- `{method_name}` in file `{file_path}` has changed, but no diff was found."
-                            )
+                    if not latest_commit_hash or latest_commit_hash == commit_hash:
+                        continue
+
+                    old_file_content = download_file_from_commit(repo, commit_hash, file_path)
+                    new_file_content = download_file_from_commit(repo, latest_commit_hash, file_path)
+
+                    if not old_file_content or not new_file_content:
+                        changed_methods.append(
+                            f"- `{method_name}` in file `{file_path}` changed, but could not fetch file contents."
+                        )
+                        continue
+
+                    old_method = extract_method(old_file_content, method_name)
+                    new_method = extract_method(new_file_content, method_name)
+
+                    diff = compare_method_diff(old_method, new_method)
+                    if diff:
+                        changed_methods.append(f"### `{method_name}` in file `{file_path}` has changed:\n\n```diff\n{diff}\n```")
+                    else:
+                        changed_methods.append(
+                            f"- `{method_name}` in file `{file_path}` changed, but no differences found in method."
+                        )
+
     return changed_methods
+
+def get_last_commit_hash_for_file_in_branch(repo_url, file_path):
+    repo_url_split = repo_url.strip("/").split("/")
+    username, repo_name = repo_url_split[-2], repo_url_split[-1]
+    api_url = f"https://api.github.com/repos/{username}/{repo_name}/commits"
+    branch = os.getenv("GITHUB_BASE_REF", "develop")
+    params = {"path": file_path, "sha": branch}
+    response = requests.get(api_url, params=params, headers={"Authorization": f"token {os.getenv('GITHUB_TOKEN')}"})
+
+    if response.status_code != 200:
+        print(f"Failed to fetch commits: {response.status_code} - {response.reason}")
+        return None
+
+    commits = response.json()
+    return commits[0]["sha"] if commits else None
 
 
 if __name__ == "__main__":
