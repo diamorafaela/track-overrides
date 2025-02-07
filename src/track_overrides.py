@@ -14,9 +14,8 @@ def download_file_from_commit(repo_url, commit_hash, file_path):
 
     if response.status_code == 200:
         return response.text
-    else:
-        print(f"Failed to fetch file {file_path} from commit {commit_hash}: {response.status_code} - {response.reason}")
-        return None
+    print(f"Failed to fetch file {file_path} from commit {commit_hash}: {response.status_code} - {response.reason}")
+    return None
 
 
 def extract_method(source_code, method_name):
@@ -35,6 +34,22 @@ def compare_method_diff(old_method, new_method):
         old_method.splitlines(), new_method.splitlines(), lineterm="", fromfile="old", tofile="new"
     )
     return "\n".join(diff)
+
+
+def get_last_commit_hash_for_file_in_branch(repo_url, file_path):
+    repo_url_split = repo_url.strip("/").split("/")
+    username, repo_name = repo_url_split[-2], repo_url_split[-1]
+    api_url = f"https://api.github.com/repos/{username}/{repo_name}/commits"
+    branch = os.getenv("GITHUB_BASE_REF", "develop")
+    params = {"path": file_path, "sha": branch}
+    response = requests.get(api_url, params=params, headers={"Authorization": f"token {os.getenv('GITHUB_TOKEN')}"})
+
+    if response.status_code != 200:
+        print(f"Failed to fetch commits: {response.status_code} - {response.reason}")
+        return None
+
+    commits = response.json()
+    return commits[0]["sha"] if commits else None
 
 
 def compare_commit_hashes(directory):
@@ -75,27 +90,8 @@ def compare_commit_hashes(directory):
                     diff = compare_method_diff(old_method, new_method)
                     if diff:
                         changed_methods.append(f"### `{method_name}` in file `{file_path}` has changed:\n\n```diff\n{diff}\n```")
-                    else:
-                        changed_methods.append(
-                            f"- `{method_name}` in file `{file_path}` changed, but no differences found in method."
-                        )
 
     return changed_methods
-
-def get_last_commit_hash_for_file_in_branch(repo_url, file_path):
-    repo_url_split = repo_url.strip("/").split("/")
-    username, repo_name = repo_url_split[-2], repo_url_split[-1]
-    api_url = f"https://api.github.com/repos/{username}/{repo_name}/commits"
-    branch = os.getenv("GITHUB_BASE_REF", "develop")
-    params = {"path": file_path, "sha": branch}
-    response = requests.get(api_url, params=params, headers={"Authorization": f"token {os.getenv('GITHUB_TOKEN')}"})
-
-    if response.status_code != 200:
-        print(f"Failed to fetch commits: {response.status_code} - {response.reason}")
-        return None
-
-    commits = response.json()
-    return commits[0]["sha"] if commits else None
 
 
 if __name__ == "__main__":
